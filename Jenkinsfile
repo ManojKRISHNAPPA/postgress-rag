@@ -15,7 +15,10 @@ pipeline{
         stage('docker-build'){
             steps{
                 script{
-                    sh "docker build -t ${IMAGE_NAME} ."
+                    sh '''
+                    printenv
+                    docker build -t ${IMAGE_NAME} .
+                    '''
                 }
             }
         }
