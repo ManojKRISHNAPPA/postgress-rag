@@ -3,6 +3,9 @@ pipeline{
 
     environment {
         IMAGE_NAME = "manojkrishnappa/postgress-rag-dev:${GIT_COMMIT}"
+        AWS_REGION = "ap-northeast-1"
+        CLUSTER_NAME = "quantamvector"
+        NAMESPACE = "quantam"
     }
 
     stages{
@@ -38,6 +41,25 @@ pipeline{
                 sh '''
                 docker push ${IMAGE_NAME}
                 '''
+            }
+        }
+
+        stage('update kube-config'){
+            steps{
+                sh '''
+                    aws eks --region ${AWS_REGION} update-kubeconfig --name ${CLUSTER_NAME}
+                '''
+            }
+        }
+
+        stage('deploy'){
+            steps{
+                withKubeConfig(caCertificate: '', clusterName: 'quantamvector', contextName: '', credentialsId: 'kube', namespace: 'quantam', restrictKubeConfigAccess: false, serverUrl: 'https://A53C0BD517EACB39F4D2955BC907087A.gr7.ap-northeast-1.eks.amazonaws.com') {
+                    sh '''
+                    sed -i "s|replace|${IMAGE_NAME}|g" Deployment.yaml
+                    kubectl apply -f Deployment.yaml -n ${NAMESPACE}
+                    '''
+                }
             }
         }
     }
