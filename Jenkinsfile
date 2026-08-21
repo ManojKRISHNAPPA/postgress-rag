@@ -4,7 +4,7 @@ pipeline{
     environment {
         IMAGE_NAME = "manojkrishnappa/postgress-rag-dev:${GIT_COMMIT}"
         AWS_REGION = "ap-northeast-1"
-        CLUSTER_NAME = "quantamvector"
+        CLUSTER_NAME = "itkannadigaru-cluster"
         NAMESPACE = "quantam"
     }
 
@@ -54,7 +54,7 @@ pipeline{
 
         stage('deploy'){
             steps{
-                withKubeConfig(caCertificate: '', clusterName: 'quantamvector', contextName: '', credentialsId: 'kube', namespace: 'quantam', restrictKubeConfigAccess: false, serverUrl: 'https://A53C0BD517EACB39F4D2955BC907087A.gr7.ap-northeast-1.eks.amazonaws.com') {
+                withKubeConfig(caCertificate: '', clusterName: 'itkannadigaru-cluster', contextName: '', credentialsId: 'kube', namespace: 'quantam', restrictKubeConfigAccess: false, serverUrl: 'https://D8C8960F77C6D66C4F891EA787E11A83.gr7.ap-northeast-1.eks.amazonaws.com') {
                     sh '''
                     sed -i "s|replace|${IMAGE_NAME}|g" Deployment.yaml
                     kubectl apply -f Deployment.yaml -n ${NAMESPACE}
