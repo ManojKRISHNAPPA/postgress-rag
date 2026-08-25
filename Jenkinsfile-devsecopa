@@ -50,28 +50,27 @@ pipeline{
             }
         }
 
-        stage('mutation testing'){
-            steps{
+        stage('Mutation Testing') {
+            steps {
                 sh '''
-                    .   .venv/bin/activate
-                    mutmut run || true
-                    mutmut results
-                    mutmut html
-                '''
-            }
+                    . .venv/bin/activate
 
-            post{
-                always{
-                    archiveArtifacts allowEmptyArchive: true, artifacts: 'html/**', fingerprint: true
-                    publishHTML(target: [
-                        allowMissing: true,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'html',
-                        reportFiles: 'index.html',
-                        reportName: 'Mutation Testing Report'
-                    ])
-                }
+                    rm -rf mutation-report
+                    mkdir -p mutation-report
+
+                    mutmut run
+                    mutmut results > mutation-report/mutmut-results.txt
+                '''
+
+                publishHTML([
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: 'mutation-report',
+                    reportFiles: 'index.html',
+                    reportName: 'Mutation Testing Report',
+                    reportTitles: 'Mutmut Mutation Testing'
+                ])
             }
         }
 
