@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    tools {
+        sonarQube 'SonarScanner'
+    }
+
     environment {
         IMAGE_NAME = "manojkrishnappa/postgress-rag-dev:${GIT_COMMIT}"
         AWS_REGION = "ap-northeast-1"
