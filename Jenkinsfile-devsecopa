@@ -1,9 +1,9 @@
 pipeline {
     agent any
 
-    tools {
-        sonarRunner 'SonarScanner'
-    }
+    // tools {
+    //     sonarRunner 'SonarScanner'
+    // }
 
     environment {
         IMAGE_NAME = "manojkrishnappa/postgress-rag-dev:${GIT_COMMIT}"
@@ -353,13 +353,18 @@ PYTHON
 
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv('SonarQube') {
-                    sh '''
-                        sonar-scanner \
-                            -Dsonar.projectKey=devsecops-project \
-                            -Dsonar.sources=. \
-                            -Dsonar.exclusions=".venv/**,tests/**,mutation-report/**,coverage-html/**,__pycache__/**"
-                    '''
+
+                script {
+                    def scannerHome = tool 'SonarScanner'
+
+                    withSonarQubeEnv('SonarQube') {
+                        sh '''
+                            sonar-scanner \
+                                -Dsonar.projectKey=devsecops-project \
+                                -Dsonar.sources=. \
+                                -Dsonar.exclusions=".venv/**,tests/**,mutation-report/**,coverage-html/**,__pycache__/**"
+                        '''
+                    }
                 }
             }
         }
