@@ -1,4 +1,4 @@
-pipeline{
+pipeline {
     agent any
 
     environment {
@@ -8,16 +8,18 @@ pipeline{
         NAMESPACE = "quantam"
     }
 
-    stages{
-        stage('git-checkout'){
-            steps{
-                git branch: 'main', url: 'https://github.com/ManojKRISHNAPPA/postgress-rag.git'  
-            }    
+    stages {
+
+        stage('git-checkout') {
+            steps {
+                git branch: 'main',
+                    url: 'https://github.com/ManojKRISHNAPPA/postgress-rag.git'
+            }
         }
 
-        stage('setup-python-env'){
-            steps{
-                sh'''
+        stage('setup-python-env') {
+            steps {
+                sh '''
                     python3 -m venv .venv
 
                     . .venv/bin/activate
@@ -28,16 +30,27 @@ pipeline{
             }
         }
 
-        stage('unit-tests'){
-            steps{
+        stage('unit-tests') {
+            steps {
                 sh '''
                     . .venv/bin/activate
-                    pytest --junitxml=test-results/junit.xml --cov=. --cov-report=xml:coverage.xml --cov-report=html:coverage-html --cov-report=term
+
+                    mkdir -p test-results
+
+                    pytest \
+                        --junitxml=test-results/junit.xml \
+                        --cov=. \
+                        --cov-report=xml:coverage.xml \
+                        --cov-report=html:coverage-html \
+                        --cov-report=term
                 '''
             }
-            post{
-                always{
-                    junit allowEmptyResults: true, testResults: 'test-results/junit.xml'
+
+            post {
+                always {
+                    junit allowEmptyResults: true,
+                        testResults: 'test-results/junit.xml'
+
                     publishHTML(target: [
                         allowMissing: true,
                         alwaysLinkToLastBuild: true,
@@ -58,22 +71,228 @@ pipeline{
                     rm -rf mutation-report
                     mkdir -p mutation-report
 
+                    echo "Running Mutmut..."
                     mutmut run
-                    mutmut results > mutation-report/mutmut-results.txt
-                '''
 
-                publishHTML([
-                    allowMissing: false,
-                    alwaysLinkToLastBuild: true,
-                    keepAll: true,
-                    reportDir: 'mutation-report',
-                    reportFiles: 'index.html',
-                    reportName: 'Mutation Testing Report',
-                    reportTitles: 'Mutmut Mutation Testing'
-                ])
+                    echo "Collecting Mutmut results..."
+                    mutmut results > mutation-report/mutmut-results.txt
+
+                    echo "Generating HTML report..."
+
+                    python3 <<'PYTHON'
+            import html
+            from pathlib import Path
+            from datetime import datetime
+
+            results_file = Path("mutation-report/mutmut-results.txt")
+            html_file = Path("mutation-report/index.html")
+
+            results = results_file.read_text(
+                encoding="utf-8",
+                errors="replace"
+            )
+
+            # Escape output so terminal characters cannot become HTML
+            safe_results = html.escape(results)
+
+            # Try to extract basic mutation statistics
+            total = killed = survived = timeout = 0
+
+            for line in results.splitlines():
+                line_lower = line.lower()
+
+                if "killed" in line_lower:
+                    pass
+
+            # Build HTML report
+            report = f"""<!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+
+                <meta name="viewport"
+                    content="width=device-width, initial-scale=1.0">
+
+                <title>Mutmut Mutation Testing Report</title>
+
+                <style>
+                    body {{
+                        font-family: Arial, Helvetica, sans-serif;
+                        margin: 0;
+                        background: #f5f7fa;
+                        color: #222;
+                    }}
+
+                    .header {{
+                        background: #1f2937;
+                        color: white;
+                        padding: 25px 40px;
+                    }}
+
+                    .header h1 {{
+                        margin: 0 0 8px 0;
+                    }}
+
+                    .header p {{
+                        margin: 0;
+                        opacity: 0.8;
+                    }}
+
+                    .container {{
+                        max-width: 1200px;
+                        margin: 30px auto;
+                        padding: 0 20px;
+                    }}
+
+                    .card {{
+                        background: white;
+                        border-radius: 8px;
+                        padding: 25px;
+                        margin-bottom: 25px;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+                    }}
+
+                    .card h2 {{
+                        margin-top: 0;
+                        color: #1f2937;
+                    }}
+
+                    pre {{
+                        background: #111827;
+                        color: #e5e7eb;
+                        padding: 20px;
+                        border-radius: 6px;
+                        overflow-x: auto;
+                        line-height: 1.5;
+                        white-space: pre-wrap;
+                    }}
+
+                    .status {{
+                        display: inline-block;
+                        padding: 6px 12px;
+                        border-radius: 5px;
+                        background: #2563eb;
+                        color: white;
+                        font-weight: bold;
+                    }}
+
+                    .info {{
+                        display: grid;
+                        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                        gap: 15px;
+                    }}
+
+                    .info-box {{
+                        background: #f9fafb;
+                        border: 1px solid #e5e7eb;
+                        padding: 15px;
+                        border-radius: 6px;
+                    }}
+
+                    .info-box strong {{
+                        display: block;
+                        color: #6b7280;
+                        margin-bottom: 5px;
+                    }}
+
+                    footer {{
+                        text-align: center;
+                        color: #6b7280;
+                        padding: 30px;
+                    }}
+                </style>
+            </head>
+
+            <body>
+
+            <div class="header">
+                <h1>Mutmut Mutation Testing Report</h1>
+                <p>Postgres RAG - DevSecOps Pipeline</p>
+            </div>
+
+            <div class="container">
+
+                <div class="card">
+                    <h2>Mutation Testing Status</h2>
+
+                    <span class="status">
+                        Mutmut Results
+                    </span>
+                </div>
+
+                <div class="card">
+                    <h2>Build Information</h2>
+
+                    <div class="info">
+
+                        <div class="info-box">
+                            <strong>Generated</strong>
+                            {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+                        </div>
+
+                        <div class="info-box">
+                            <strong>Mutmut Version</strong>
+                            3.7.0
+                        </div>
+
+                        <div class="info-box">
+                            <strong>Python</strong>
+                            3.12
+                        </div>
+
+                        <div class="info-box">
+                            <strong>Source</strong>
+                            rag_core.py
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Mutmut Results</h2>
+
+                    <pre>{safe_results}</pre>
+                </div>
+
+            </div>
+
+            <footer>
+                Generated by Jenkins DevSecOps Pipeline
+            </footer>
+
+            </body>
+            </html>
+            """
+
+            html_file.write_text(report, encoding="utf-8")
+
+            print(f"HTML report generated: {html_file}")
+            PYTHON
+
+                                echo "Mutation testing HTML report generated:"
+                                ls -lh mutation-report/
+                            '''
+            }
+
+            post {
+                always {
+                    publishHTML(target: [
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'mutation-report',
+                        reportFiles: 'index.html',
+                        reportName: 'Mutation Testing Report',
+                        reportTitles: 'Mutmut Mutation Testing'
+                    ]
+
+                    archiveArtifacts(
+                        artifacts: 'mutation-report/**/*',
+                        allowEmptyArchive: true,
+                        fingerprint: true
+                    )
+                }
             }
         }
-
     }
-
 }
