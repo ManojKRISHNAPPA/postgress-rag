@@ -70,3 +70,19 @@ pytest -q
 - Automatic refresh occurs before each answer.
 - If a new table is created in the selected schema, it is detected and re-embedded.
 - Ingestion reads up to the configured row limit per table, then chunk-splits those records for better retrieval quality.
+
+
+
+
+```
+Depends mainly on the NVD data feed download (first run) rather than the tool itself:
+
+First run (no NVD API key): Can take 20–60+ minutes, sometimes longer, because NVD enforces strict public rate limits on the CVE feed API.
+First run (with NVD API key): Usually 5–15 minutes — an API key raises the rate limit significantly. Get a free key at nvd.nist.gov/developers/request-an-api-key.
+Subsequent runs: Much faster (1–5 minutes), since it only pulls incremental updates if the local NVD cache is persisted between builds.
+The scan itself (after data is downloaded) is usually quick — a few seconds to a couple minutes depending on project size.
+Recommendation for your Jenkins setup: persist the dependency-check data directory (usually ~/.m2/repository/org/owasp or wherever odcInstallation caches it, typically <tool-home>/data) across builds using a Jenkins agent with a persistent workspace/volume, and configure an NVD API key via --nvdApiKey in additionalArguments, otherwise every build could stall for a long time or hit rate-limit failures.
+
+Want me to update the Jenkinsfile dependencyCheck step to add an NVD API key credential and cache the data directory?
+
+```
