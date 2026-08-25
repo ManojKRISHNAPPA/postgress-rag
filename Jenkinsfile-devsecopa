@@ -349,14 +349,14 @@ PYTHON
 
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv('SonarQube') {
-                    sh '''
-                        sonar-scanner \
-                            -Dsonar.projectKey=devsecops-project \
-                            -Dsonar.sources=. \
-                            -Dsonar.host.url=$SONAR_HOST_URL
-                    '''
-                }
+                '''
+                    sonar-scanner \
+                        -Dsonar.projectKey=devsecops-project \
+                        -Dsonar.sources=. \
+                        -Dsonar.host.url=http://54.95.55.104:9000 \
+                        -Dsonar.login=1e8d1ebea881b95d069783f1c05eee5fba620971
+
+                '''
             }
         }
 
