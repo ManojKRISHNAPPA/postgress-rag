@@ -18,7 +18,6 @@ pipeline{
         stage('setup-python-env'){
             steps{
                 sh'''
-                    apt install python3.12-venv
                     python3 -m venv .venv
 
                     . .venv/bin/activate
