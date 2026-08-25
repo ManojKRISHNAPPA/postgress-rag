@@ -3,7 +3,7 @@ pipeline {
 
     tools {
         maven 'maven'
-        SonarQube 'SonarQube'
+        sonar 'SonarQube'
     }
 
     environment {
