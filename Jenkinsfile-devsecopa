@@ -1,9 +1,6 @@
 pipeline {
     agent any
 
-    // tools {
-    //     sonarRunner 'SonarScanner'
-    // }
 
     environment {
         IMAGE_NAME = "manojkrishnappa/postgress-rag-dev:${GIT_COMMIT}"
@@ -373,5 +370,12 @@ PYTHON
             }
         }
 
+        stage('Quality Gate'){
+            steps{
+                timeout(time: 1, unit: 'MINUTES'){
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
     }
 }
