@@ -358,12 +358,16 @@ PYTHON
                     def scannerHome = tool 'SonarScanner'
 
                     withSonarQubeEnv('SonarQube') {
-                        sh '''
-                            sonar-scanner \
-                                -Dsonar.projectKey=devsecops-project \
-                                -Dsonar.sources=. \
-                                -Dsonar.exclusions=".venv/**,tests/**,mutation-report/**,coverage-html/**,__pycache__/**"
-                        '''
+                        sh """
+                            ${scannerHome}/bin/sonar-scanner \\
+                                -Dsonar.projectKey=postgress-rag \\
+                                -Dsonar.projectName="Postgress-RAG" \\
+                                -Dsonar.sources=. \\
+                                -Dsonar.tests=tests \\
+                                -Dsonar.exclusions=".venv/**,tests/**,mutation-report/**,coverage-html/**,__pycache__/**" \\
+                                -Dsonar.python.coverage.reportPaths=coverage.xml \\
+                                -Dsonar.python.xunit.reportPath=test-results/junit.xml
+                        """
                     }
                 }
             }
