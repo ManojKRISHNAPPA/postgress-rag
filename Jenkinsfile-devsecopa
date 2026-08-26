@@ -7,6 +7,7 @@ pipeline {
         AWS_REGION = "ap-northeast-1"
         CLUSTER_NAME = "itkannadigaru-cluster"
         NAMESPACE = "quantam"
+        OWASP_FAIL_CVSS = "7"
     }
 
     stages {
@@ -375,6 +376,16 @@ PYTHON
                 timeout(time: 1, unit: 'MINUTES'){
                     waitForQualityGate abortPipeline: true
                 }
+            }
+        }
+
+
+        stage('owasp-dependency-check'){
+            steps{
+                withCredentials([string(credentialsId: 'OWASP_NVD_KEY', variable: 'NVD_API_KEY')]) {
+                    dependencyCheck additionalArguments: "--scan . --format XML --format HTML --out dependency-check-report --disableYarnAudit --disableNodeAudit --failOnCVSS ${OWASP_FAIL_CVSS} --nvdApiKey ${NVD_API_KEY}", odcInstallation: 'OWASP-Dependency-Check'
+                }
+                dependencyCheckPublisher pattern: 'dependency-check-report/dependency-check-report.xml'
             }
         }
     }
