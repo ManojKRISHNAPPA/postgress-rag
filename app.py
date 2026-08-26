@@ -15,10 +15,7 @@ from rag_core import (
 load_dotenv()
 
 
-def main() -> None:
-    st.set_page_config(page_title="PostgreSQL RAG Chat", layout="wide")
-    st.title("PostgreSQL RAG Chatbot (LangChain + OpenAI)")
-
+def render_connection_sidebar() -> tuple[dict, bool]:
     with st.sidebar:
         st.header("Connection")
 
@@ -40,43 +37,128 @@ def main() -> None:
 
         connect_clicked = st.button("Connect / Refresh Index", type="primary")
 
+    settings = {
+        "db_host": db_host,
+        "db_port": db_port,
+        "db_name": db_name,
+        "db_user": db_user,
+        "db_password": db_password,
+        "db_schema": db_schema,
+        "row_limit": int(row_limit),
+        "chunk_size": int(chunk_size),
+        "chunk_overlap": int(chunk_overlap),
+        "openai_api_key": openai_api_key,
+        "model_name": model_name,
+        "embedding_model": embedding_model,
+    }
+    return settings, connect_clicked
+
+
+def connect_to_database(settings: dict) -> None:
+    required = [
+        settings["db_host"], settings["db_port"], settings["db_name"],
+        settings["db_user"], settings["db_password"], settings["openai_api_key"],
+    ]
+    if not all(required):
+        st.error("Please provide all DB fields and OpenAI API key.")
+        return
+
+    db_uri = build_db_uri(
+        settings["db_host"], settings["db_port"], settings["db_name"],
+        settings["db_user"], settings["db_password"],
+    )
+    embeddings = OpenAIEmbeddings(
+        model=settings["embedding_model"], api_key=settings["openai_api_key"]
+    )
+    vectorstore, rebuilt = refresh_vectorstore_if_needed(
+        db_uri=db_uri, schema=settings["db_schema"], row_limit=settings["row_limit"],
+        embeddings=embeddings, chunk_size=settings["chunk_size"],
+        chunk_overlap=settings["chunk_overlap"],
+    )
+
+    st.session_state.rag = {
+        "db_uri": db_uri,
+        "schema": settings["db_schema"],
+        "row_limit": settings["row_limit"],
+        "chunk_size": settings["chunk_size"],
+        "chunk_overlap": settings["chunk_overlap"],
+        "embedding_model": settings["embedding_model"],
+        "api_key": settings["openai_api_key"],
+        "model_name": settings["model_name"],
+        "vectorstore": vectorstore,
+    }
+    message = (
+        "Index created/refreshed from PostgreSQL tables."
+        if rebuilt else "Index already up to date."
+    )
+    st.success(message)
+
+
+def render_retrieved_sources(vectorstore, question: str) -> None:
+    with st.expander("Retrieved sources"):
+        hits = vectorstore.similarity_search(question, k=6)
+        for index, doc in enumerate(hits, start=1):
+            table_name = doc.metadata.get("table", "unknown")
+            st.write(f"{index}. table={table_name}")
+            st.code(doc.page_content)
+
+
+def answer_user_question(question: str) -> None:
+    rag = st.session_state.rag
+    embeddings = OpenAIEmbeddings(model=rag["embedding_model"], api_key=rag["api_key"])
+    vectorstore, rebuilt = refresh_vectorstore_if_needed(
+        db_uri=rag["db_uri"], schema=rag["schema"], row_limit=rag["row_limit"],
+        embeddings=embeddings, chunk_size=rag["chunk_size"],
+        chunk_overlap=rag["chunk_overlap"],
+    )
+    llm = ChatOpenAI(model=rag["model_name"], temperature=0.0, api_key=rag["api_key"])
+    result = answer_question_hybrid(
+        question=question, db_uri=rag["db_uri"], schema=rag["schema"],
+        vectorstore=vectorstore, llm=llm,
+    )
+    st.markdown(result["answer"])
+
+    if rebuilt:
+        st.caption("Detected schema/data change. Refreshed embeddings automatically.")
+    if result["mode"] == "sql" and result["sql"]:
+        st.caption("Answer mode: SQL")
+        with st.expander("Generated SQL"):
+            st.code(result["sql"], language="sql")
+    if result["mode"] == "rag":
+        st.caption("Answer mode: RAG")
+    render_retrieved_sources(vectorstore, question)
+    st.session_state.messages.append({"role": "assistant", "content": result["answer"]})
+
+
+def render_chat() -> None:
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    user_question = st.chat_input("Ask a question about your PostgreSQL data...")
+    if not user_question:
+        return
+
+    st.session_state.messages.append({"role": "user", "content": user_question})
+    with st.chat_message("user"):
+        st.markdown(user_question)
+    with st.chat_message("assistant"):
+        try:
+            answer_user_question(user_question)
+        except Exception as ex:
+            st.error(f"Chat error: {ex}")
+
+
+def main() -> None:
+    st.set_page_config(page_title="PostgreSQL RAG Chat", layout="wide")
+    st.title("PostgreSQL RAG Chatbot (LangChain + OpenAI)")
+    settings, connect_clicked = render_connection_sidebar()
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
     if connect_clicked:
         try:
-            if not all([db_host, db_port, db_name, db_user, db_password, openai_api_key]):
-                st.error("Please provide all DB fields and OpenAI API key.")
-                st.stop()
-
-            db_uri = build_db_uri(db_host, db_port, db_name, db_user, db_password)
-            embeddings = OpenAIEmbeddings(model=embedding_model, api_key=openai_api_key)
-
-            vectorstore, rebuilt = refresh_vectorstore_if_needed(
-                db_uri=db_uri,
-                schema=db_schema,
-                row_limit=int(row_limit),
-                embeddings=embeddings,
-                chunk_size=int(chunk_size),
-                chunk_overlap=int(chunk_overlap),
-            )
-
-            st.session_state.rag = {
-                "db_uri": db_uri,
-                "schema": db_schema,
-                "row_limit": int(row_limit),
-                "chunk_size": int(chunk_size),
-                "chunk_overlap": int(chunk_overlap),
-                "embedding_model": embedding_model,
-                "api_key": openai_api_key,
-                "model_name": model_name,
-                "vectorstore": vectorstore,
-            }
-
-            if rebuilt:
-                st.success("Index created/refreshed from PostgreSQL tables.")
-            else:
-                st.success("Index already up to date.")
+            connect_to_database(settings)
 
         except Exception as ex:
             st.error(f"Connection/indexing error: {ex}")
@@ -84,67 +166,7 @@ def main() -> None:
     if "rag" not in st.session_state:
         st.info("Fill sidebar fields and click 'Connect / Refresh Index' to start chatting.")
         return
-
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
-
-    user_question = st.chat_input("Ask a question about your PostgreSQL data...")
-
-    if user_question:
-        st.session_state.messages.append({"role": "user", "content": user_question})
-        with st.chat_message("user"):
-            st.markdown(user_question)
-
-        with st.chat_message("assistant"):
-            try:
-                rag = st.session_state.rag
-                embeddings = OpenAIEmbeddings(model=rag["embedding_model"], api_key=rag["api_key"])
-
-                # Auto-sync before each answer so newly created tables are embedded automatically.
-                vectorstore, rebuilt = refresh_vectorstore_if_needed(
-                    db_uri=rag["db_uri"],
-                    schema=rag["schema"],
-                    row_limit=rag["row_limit"],
-                    embeddings=embeddings,
-                    chunk_size=rag["chunk_size"],
-                    chunk_overlap=rag["chunk_overlap"],
-                )
-
-                llm = ChatOpenAI(model=rag["model_name"], temperature=0.0, api_key=rag["api_key"])
-                result = answer_question_hybrid(
-                    question=user_question,
-                    db_uri=rag["db_uri"],
-                    schema=rag["schema"],
-                    vectorstore=vectorstore,
-                    llm=llm,
-                )
-                answer = result["answer"]
-
-                st.markdown(answer)
-
-                if rebuilt:
-                    st.caption("Detected schema/data change. Refreshed embeddings automatically.")
-
-                if result["mode"] == "sql" and result["sql"]:
-                    st.caption("Answer mode: SQL")
-                    with st.expander("Generated SQL"):
-                        st.code(result["sql"], language="sql")
-
-                if result["mode"] == "rag":
-                    st.caption("Answer mode: RAG")
-
-                with st.expander("Retrieved sources"):
-                    hits = vectorstore.similarity_search(user_question, k=6)
-                    for i, doc in enumerate(hits, start=1):
-                        table_name = doc.metadata.get("table", "unknown")
-                        st.write(f"{i}. table={table_name}")
-                        st.code(doc.page_content)
-
-                st.session_state.messages.append({"role": "assistant", "content": answer})
-
-            except Exception as ex:
-                st.error(f"Chat error: {ex}")
+    render_chat()
 
 
 if __name__ == "__main__":

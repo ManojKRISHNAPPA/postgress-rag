@@ -362,7 +362,7 @@ PYTHON
                                 -Dsonar.projectName="Postgress-RAG" \\
                                 -Dsonar.sources=. \\
                                 -Dsonar.tests=tests \\
-                                -Dsonar.exclusions=".venv/**,tests/**,mutation-report/**,coverage-html/**,__pycache__/**" \\
+                                -Dsonar.exclusions=".venv/**,tests/**,mutants/**,mutation-report/**,coverage-html/**,__pycache__/**" \\
                                 -Dsonar.python.coverage.reportPaths=coverage.xml \\
                                 -Dsonar.python.xunit.reportPath=test-results/junit.xml
                         """
