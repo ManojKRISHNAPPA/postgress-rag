@@ -383,7 +383,7 @@ PYTHON
         stage('owasp-dependency-check'){
             steps{
                 withCredentials([string(credentialsId: 'OWASP_NVD_KEY', variable: 'NVD_API_KEY')]) {
-                    dependencyCheck additionalArguments: "--scan . --format XML --format HTML --out dependency-check-report --disableYarnAudit --disableNodeAudit --failOnCVSS ${OWASP_FAIL_CVSS} --nvdApiKey ${NVD_API_KEY}", odcInstallation: 'OWASP-Dependency-Check'
+                    dependencyCheck additionalArguments: '--scan . --format XML --format HTML --out dependency-check-report --disableYarnAudit --disableNodeAudit --failOnCVSS ' + OWASP_FAIL_CVSS + ' --nvdApiKey ' + NVD_API_KEY, odcInstallation: 'OWASP-Dependency-Check'
                 }
                 dependencyCheckPublisher pattern: 'dependency-check-report/dependency-check-report.xml'
             }
