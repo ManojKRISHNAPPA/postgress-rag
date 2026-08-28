@@ -1,102 +1,165 @@
-pipeline{
-    agent any
+pipeline {
+
+    parameters {
+        choice(
+            name: 'terraformAction',
+            choices: ['apply', 'destroy'],
+            description: 'Choose your terraform action'
+        )
+    }
 
     environment {
-        IMAGE_NAME = "manojkrishnappa/postgress-rag-dev:${GIT_COMMIT}"
-        AWS_REGION = "ap-northeast-1"
-        CLUSTER_NAME = "itkannadigaru-cluster"
-        NAMESPACE = "quantam"
+        AWS_ACCESS_KEY_ID     = credentials('AWS_ACCESS_KEY_ID')
+        AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY')
+        AWS_DEFAULT_REGION    = 'ap-northeast-1'
     }
 
-    stages{
-        stage('git-checkout'){
-            steps{
-                git branch: 'main', url: 'https://github.com/ManojKRISHNAPPA/postgress-rag.git'  
-            }    
-        }
+    agent any
 
-        stage('setup-python-env'){
-            steps{
-                sh'''
-                    python3 -m venv .venv
+    stages {
 
-                    . .venv/bin/activate
-                    pip install --upgrade pip
-                    pip install -r requirements.txt
-                    pip install -r requirements-dev.txt
-                '''
+    
+        stage('Checkout') {
+            steps {
+                script {
+                    dir('terraform') {
+                        git url: 'https://github.com/ManojKRISHNAPPA/postgress-rag.git', branch: 'infra'
+                    }
+                }
+                
             }
         }
+  
 
-        stage('unit-tests'){
+        stage('Terraform Secuity scan'){
             steps{
                 sh '''
-                    . .venv/bin/activate
-                    pytest --junitxml=test-results/junit.xml --cov=. --cov-report=xml:coverage.xml --cov-report=html:coverage-html --cov-report=term
-                '''
-            }
-            post{
-                always{
-                    junit allowEmptyResults: true, testResults: 'test-results/junit.xml'
-                    publishHTML(target: [
-                        allowMissing: true,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'coverage-html',
-                        reportFiles: 'index.html',
-                        reportName: 'Coverage Report'
-                    ])
-                }
-            }
-        }
-
-        stage('docker-build'){
-            steps{
-                script{
-                    sh '''
-                    printenv
-                    docker build -t ${IMAGE_NAME} .
-                    '''
-                }
-            }
-        }
-
-        stage('docker-login'){
-            steps{
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
-                    sh '''
-                    echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
-                    '''
-                }
-            }
-        }
-
-        stage('docker-push'){
-            steps{
-                sh '''
-                docker push ${IMAGE_NAME}
+                    sh security.sh
                 '''
             }
         }
 
-        stage('update kube-config'){
-            steps{
-                sh '''
-                    aws eks --region ${AWS_REGION} update-kubeconfig --name ${CLUSTER_NAME}
-                '''
+        // ─── APPLY STAGES ─────────────────────────────────────────────────────
+
+        stage('Plan: 0-bootstrap') {
+            when { expression { params.terraformAction == 'apply' } }
+            steps {
+                sh 'cd terraform/0-bootstrap && terraform init -input=false'
+                // Import existing resources into state if they already exist in AWS
+                // '|| true' ensures pipeline does not fail if resource does not exist yet (first run)
+                sh 'cd terraform/0-bootstrap && terraform import aws_s3_bucket.tf_state quantam-vector-infra-statefile-backup-2 || true'
+                sh 'cd terraform/0-bootstrap && terraform import aws_dynamodb_table.tf_lock quantam-vector-terraform-locks || true'
+                sh 'cd terraform/0-bootstrap && terraform plan -out tfplan'
+                sh 'cd terraform/0-bootstrap && terraform show -no-color tfplan > tfplan.txt'
             }
         }
 
-        stage('deploy'){
-            steps{
-                withKubeConfig(caCertificate: '', clusterName: 'itkannadigaru-cluster', contextName: '', credentialsId: 'kube', namespace: 'quantam', restrictKubeConfigAccess: false, serverUrl: 'https://D8C8960F77C6D66C4F891EA787E11A83.gr7.ap-northeast-1.eks.amazonaws.com') {
-                    sh '''
-                    sed -i "s|replace|${IMAGE_NAME}|g" Deployment.yaml
-                    kubectl apply -f Deployment.yaml -n ${NAMESPACE}
-                    '''
+        stage('Approval: 0-bootstrap') {
+            when { expression { params.terraformAction == 'apply' } }
+            steps {
+                script {
+                    def plan = readFile 'terraform/0-bootstrap/tfplan.txt'
+                    input message: '[0-bootstrap] Approve to proceed',
+                          parameters: [text(name: 'Plan', description: 'Terraform Plan Output', defaultValue: plan)]
                 }
             }
         }
+
+        stage('Apply: 0-bootstrap') {
+            when { expression { params.terraformAction == 'apply' } }
+            steps {
+                sh 'cd terraform/0-bootstrap && terraform apply -input=false tfplan'
+            }
+        }
+
+        stage('Plan: 1-network') {
+            when { expression { params.terraformAction == 'apply' } }
+            steps {
+                sh 'cd terraform/1-network && terraform init -input=false'
+                sh 'cd terraform/1-network && terraform plan -out tfplan'
+                sh 'cd terraform/1-network && terraform show -no-color tfplan > tfplan.txt'
+            }
+        }
+
+        stage('Approval: 1-network') {
+            when { expression { params.terraformAction == 'apply' } }
+            steps {
+                script {
+                    def plan = readFile 'terraform/1-network/tfplan.txt'
+                    input message: '[1-network] Approve to proceed',
+                          parameters: [text(name: 'Plan', description: 'Terraform Plan Output', defaultValue: plan)]
+                }
+            }
+        }
+
+        stage('Apply: 1-network') {
+            when { expression { params.terraformAction == 'apply' } }
+            steps {
+                sh 'cd terraform/1-network && terraform apply -input=false tfplan'
+            }
+        }
+
+        stage('Plan: 2-eks') {
+            when { expression { params.terraformAction == 'apply' } }
+            steps {
+                sh 'cd terraform/2-eks && terraform init -input=false'
+                sh 'cd terraform/2-eks && terraform plan -out tfplan'
+                sh 'cd terraform/2-eks && terraform show -no-color tfplan > tfplan.txt'
+            }
+        }
+
+        stage('Approval: 2-eks') {
+            when { expression { params.terraformAction == 'apply' } }
+            steps {
+                script {
+                    def plan = readFile 'terraform/2-eks/tfplan.txt'
+                    input message: '[2-eks] Approve to proceed',
+                          parameters: [text(name: 'Plan', description: 'Terraform Plan Output', defaultValue: plan)]
+                }
+            }
+        }
+
+        stage('Apply: 2-eks') {
+            when { expression { params.terraformAction == 'apply' } }
+            steps {
+                sh 'cd terraform/2-eks && terraform apply -input=false tfplan'
+            }
+        }
+
+        // ─── DESTROY STAGES (reverse order) ───────────────────────────────────
+
+        stage('Destroy: 2-eks') {
+            when { expression { params.terraformAction == 'destroy' } }
+            steps {
+                sh 'cd terraform/2-eks && terraform init -input=false'
+                sh 'cd terraform/2-eks && terraform destroy -auto-approve'
+            }
+        }
+
+        stage('Destroy: 1-network') {
+            when { expression { params.terraformAction == 'destroy' } }
+            steps {
+                sh 'cd terraform/1-network && terraform init -input=false'
+                sh 'cd terraform/1-network && terraform destroy -auto-approve'
+            }
+        }
+
+        stage('Destroy: 0-bootstrap') {
+            when { expression { params.terraformAction == 'destroy' } }
+            steps {
+                sh 'cd terraform/0-bootstrap && terraform init -input=false'
+                sh 'cd terraform/0-bootstrap && terraform destroy -auto-approve'
+            }
+        }
+
     }
 
+    post {
+        success {
+            echo "terraform ${params.terraformAction} completed successfully."
+        }
+        failure {
+            echo "Pipeline failed. Check the stage logs above."
+        }
+    }
 }

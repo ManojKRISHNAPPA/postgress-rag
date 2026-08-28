@@ -1,3 +1,0 @@
--r requirements.txt
-pytest-cov>=5.0.0
-mutmut>=3.2.0
