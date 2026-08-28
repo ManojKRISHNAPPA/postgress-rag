@@ -389,5 +389,56 @@ PYTHON
                 dependencyCheckPublisher pattern: 'dependency-check-report/dependency-check-report.xml'
             }
         }
+
+        stage('base-image-scan && OPA-rules'){
+            parallel{
+                stage('base-image-scan'){
+                    steps{
+                        sh '''
+                            echo "Running scan against base image"
+                            bash trivy-dockerimage-scan.sh
+                        '''
+                    }
+                }
+
+                stage('OPA-Rule'){
+                    steps{
+                        sh '''
+                            echo "running the opa rule"
+                            docker run --rm -v $(pwd):/project openpolicyagent/conftest test --policy dockerfile-security.rego Dockerfile
+                        '''
+                    }
+                }
+
+                stage('building Docker image'){
+                    steps{
+                        sh '''
+                            echo "Building the Docker image" 
+                            docker build -t $IMAGE_NAME .
+                        '''
+                    }
+                }
+
+                stage('docker-login'){
+                    steps{
+                        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
+                            sh '''
+                            echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
+                            '''
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Docker push'){
+            steps{
+                sh '''
+                    echo "pushing the docker images"
+                    docker push ${IMAGE_NAME}
+
+                '''
+            }
+        }
     }
 }
