@@ -5,7 +5,7 @@ pipeline {
     environment {
         IMAGE_NAME = "manojkrishnappa/postgress-rag-dev:${GIT_COMMIT}"
         AWS_REGION = "ap-northeast-1"
-        CLUSTER_NAME = "itkannadigaru-cluster"
+        CLUSTER_NAME = "quantam-vector"
         NAMESPACE = "quantam"
         OWASP_FAIL_CVSS = "7"
     }
@@ -438,6 +438,25 @@ PYTHON
                     docker push ${IMAGE_NAME}
 
                 '''
+            }
+        }
+
+        stage('update kube-config'){
+            steps{
+                sh '''
+                    aws eks --region ${AWS_REGION} update-kubeconfig --name ${CLUSTER_NAME}
+                '''
+            }
+        }
+
+        stage('deploy'){
+            steps{
+                withKubeConfig(caCertificate: '', clusterName: 'quantam-vector', contextName: '', credentialsId: 'kube', namespace: 'quantam', restrictKubeConfigAccess: false, serverUrl: 'https://B061885FCFB5801C1DB15878CCCF3E30.gr7.ap-northeast-1.eks.amazonaws.com') {
+                    sh '''
+                    sed -i "s|replace|${IMAGE_NAME}|g" Deployment.yaml
+                    kubectl apply -f Deployment.yaml -n ${NAMESPACE}
+                    '''
+                }
             }
         }
     }
