@@ -66,7 +66,7 @@ def test_split_documents_recursive_generates_more_chunks_for_long_input():
 # ---------------------------------------------------------------------------
 def test_needs_sql_query_detects_analytic_request():
     assert needs_sql_query("List top 50 customers by total revenue") is True
-    assert needs_sql_query("Explain customer churn reasons") is True
+    assert needs_sql_query("Explain customer churn reasons") is False
 
 
 def test_needs_sql_query_allows_semantic_question():
@@ -201,3 +201,69 @@ def test_answer_question_hybrid_falls_back_when_generated_sql_is_unsafe(monkeypa
 
     assert result["mode"] == "rag"
     assert "Alice" in result["answer"]
+    assert "indexed excerpts" in result["warning"]
+
+
+def test_semantic_customer_question_does_not_generate_sql(monkeypatch):
+    def unexpected_sql(*_):
+        raise AssertionError("Semantic explanation should not request SQL schema")
+    monkeypatch.setattr(rag_core, "build_schema_description", unexpected_sql)
+    llm = FakeLLM("Delayed support contributes to churn [S1].")
+    vectorstore = FakeVectorStore([
+        (Document(page_content="churn_reason: delayed support", metadata={"table": "customers"}), 0.9)
+    ])
+    result = answer_question_hybrid("Explain customer churn reasons", "unused", "public", vectorstore, llm)
+    assert result["mode"] == "rag"
+    assert result["sources"][0]["page_content"] == "churn_reason: delayed support"
+
+
+def test_explicit_sql_failure_never_calls_rag(monkeypatch):
+    monkeypatch.setattr(rag_core, "build_schema_description", lambda *_: "customers(id int)")
+    llm = SequencedLLM(["DELETE FROM customers", "This must not be generated"])
+    result = answer_question_hybrid("List customers", "unused", "public", FakeVectorStore([]), llm, mode="sql")
+    assert result["mode"] == "sql"
+    assert "could not be safely completed" in result["answer"]
+    assert len(llm.responses) == 1
+
+
+def test_explicit_rag_overrides_analytic_keywords():
+    result = answer_question_hybrid("Explain total revenue terminology", "unused", "public",
+                                    FakeVectorStore([]), FakeLLM("unused"), mode="rag")
+    assert result["mode"] == "rag"
+    assert result["sources"] == []
+
+
+def test_invalid_question_mode_and_chunk_overlap():
+    import pytest
+    with pytest.raises(ValueError, match="question"):
+        answer_question_hybrid(" ", "unused", "public", None, None)
+    with pytest.raises(ValueError, match="mode"):
+        answer_question_hybrid("Hello", "unused", "public", None, None, mode="invalid")
+    with pytest.raises(ValueError, match="chunk_overlap"):
+        split_documents_recursive([], chunk_size=100, chunk_overlap=100)
+
+
+def test_ui_renders_exact_prompt_sources(monkeypatch):
+    from pathlib import Path
+    from streamlit.testing.v1 import AppTest
+    import langchain_openai
+
+    document = Document(page_content="policy: proof of purchase required", metadata={"table": "policies"})
+    vectorstore = FakeVectorStore([(document, 0.9)])
+    # FakeVectorStore deliberately has no similarity_search method: the UI
+    # must not retrieve a second, potentially different set of source passages.
+    monkeypatch.setattr(rag_core, "refresh_vectorstore_if_needed", lambda **_: (vectorstore, False))
+    monkeypatch.setattr(langchain_openai, "OpenAIEmbeddings", lambda **_: object())
+    monkeypatch.setattr(langchain_openai, "ChatOpenAI", lambda **_: FakeLLM("Proof of purchase is required [S1]."))
+    app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py")
+    app.session_state["rag"] = {
+        "db_uri": "unused", "schema": "public", "row_limit": 100,
+        "chunk_size": 700, "chunk_overlap": 120, "embedding_model": "fake",
+        "api_key": "not-a-real-key", "model_name": "fake", "vectorstore": vectorstore,
+    }
+    app.run(timeout=15)
+    app.selectbox[0].select("rag")
+    app.chat_input[0].set_value("Explain refund policy").run(timeout=15)
+    assert not app.exception
+    assert app.code[0].value == document.page_content
+    assert "[S1]" in app.session_state["messages"][-1]["content"]

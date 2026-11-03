@@ -1,0 +1,15 @@
+# Separate dependency contract for the production path. Generate an exact lock
+# before deployment; see BUILD_ORDER.md. The root demo requirements are unchanged.
+langchain-core>=1.0,<2
+langchain-community>=0.4,<0.5
+langchain-openai>=1.0,<2
+langchain-text-splitters>=1.0,<2
+sqlalchemy>=2.0,<3
+psycopg2-binary>=2.9,<3
+faiss-cpu>=1.8,<2
+tiktoken>=0.8,<1
+filelock>=3.16,<4
+rank-bm25>=0.2.2,<0.3
+sqlglot>=26,<31
+streamlit>=1.38,<2
+pytest>=8,<10

@@ -1,0 +1,1 @@
+"""Production-oriented PostgreSQL RAG, separate from the original teaching demo."""

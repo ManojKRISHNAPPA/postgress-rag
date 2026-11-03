@@ -46,6 +46,41 @@ streamlit run app.py
 3. Click **Connect / Refresh Index**.
 4. Ask questions in chat.
 
+## Teaching the Two-File Application
+
+Start with [rag_core.py](rag_core.py), then [app.py](app.py). Both include comments
+explaining why each stage exists and where the classroom demo needs production work.
+
+1. Build the PostgreSQL URI and inspect the schema.
+2. Convert sampled table rows into LangChain Documents with source metadata.
+3. Split long records using recursive character splitting and overlap.
+4. Embed chunks and store/search their vectors with FAISS.
+5. Route exact lists/aggregates to SQL and semantic explanations to RAG.
+6. Supply retrieved excerpts to the model and display those exact excerpts.
+7. Use Streamlit session state to redraw the UI and conversation.
+
+The sidebar's **Answer mode** can change without rebuilding the index:
+
+| Mode | Example | Behavior |
+| --- | --- | --- |
+| `auto` | "Explain customer churn reasons" | Uses semantic retrieval rather than routing merely on "customer" |
+| `rag` | "What does onboarding involve?" | Answers from retrieved passages and requests source labels such as `[S1]` |
+| `sql` | "How many customers are there?" | Generates a query over the schema; reports failure rather than silently answering from sampled text |
+
+Auto mode uses a heuristic, not a universal intent classifier. If SQL fails in auto
+mode, a visible warning identifies the semantic fallback as indexed excerpts rather
+than a complete query result. Source labels show provenance, not proof of correctness.
+
+You can ask any question, but the chatbot must not invent answers absent from the
+selected database/index. It returns "I don't know based on the indexed data." when
+evidence is unavailable. Displayed conversation history is not model memory, so use
+self-contained questions. Retrieval only covers the configured sample of each table.
+
+Important remaining limits: same-count updates are not detected, the cache is shared,
+saved FAISS metadata uses trusted-only pickle loading, and regex SQL checks are not a
+security sandbox. Use a restricted read-only database role; evaluate real questions
+and strengthen these controls before production use.
+
 ## 5) Production-style querying behavior
 
 This app now routes queries by intent:
